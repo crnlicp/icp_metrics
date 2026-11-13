@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { Balance } from './components/Balance'
 import { Charts } from './components/Charts'
 import { Header } from './components/Header'
-import { Hero, type BurnSource } from './components/Hero'
+import { BurnSourceToggle, Hero } from './components/Hero'
+import { icpBurnPerSecFor, type BurnSource } from './lib/metrics'
 import { Inflation } from './components/Inflation'
 import { Methodology } from './components/Methodology'
 import { SessionStrip } from './components/SessionStrip'
@@ -33,11 +34,7 @@ export default function App() {
   const [sinceMs] = useState(() => Date.now())
   const [source, setSource] = useState<BurnSource>('cycles')
 
-  const icpBurnPerSec = d
-    ? source === 'ledger'
-      ? (d.rates.ledgerBurnIcpPerSec ?? d.rates.cycleImpliedIcpPerSec)
-      : d.rates.cycleImpliedIcpPerSec
-    : 0
+  const icpBurnPerSec = d ? icpBurnPerSecFor(d.rates, source) : 0
 
   return (
     <MotionConfig reducedMotion="user">
@@ -55,6 +52,12 @@ export default function App() {
             The Internet Computer, <span className="grad-burn">burning</span> and <span className="grad-mint">minting</span> in real
             time.
           </h1>
+          {d && (
+            <div className="intro-controls">
+              <span className="intro-controls-label">ICP burn source</span>
+              <BurnSourceToggle source={source} onSource={setSource} />
+            </div>
+          )}
         </motion.div>
 
         {status === 'error' && !d && (
@@ -70,10 +73,10 @@ export default function App() {
 
         {d && raw && (
           <>
-            <Hero d={d} sinceMs={sinceMs} source={source} onSource={setSource} />
+            <Hero d={d} sinceMs={sinceMs} source={source} />
             <SessionStrip d={d} sinceMs={sinceMs} icpBurnPerSec={icpBurnPerSec} />
             <Balance d={d} icpBurnPerSec={icpBurnPerSec} />
-            <Timeframes d={d} icpBurnPerSec={icpBurnPerSec} />
+            <Timeframes d={d} icpBurnPerSec={icpBurnPerSec} source={source} />
             <Inflation d={d} />
             <Charts d={d} cycleSeries={raw.cycleBurnSeries} />
             <Methodology />

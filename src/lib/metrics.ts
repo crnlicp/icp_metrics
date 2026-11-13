@@ -64,6 +64,14 @@ export function trailingRatePerDay(series: Point[], days: number): number | null
   return (end[1] - start[1]) / spanDays
 }
 
+/** Per-day change between the last two points of a daily cumulative series (the last complete day). */
+export function lastDayRate(series: Point[]): number | null {
+  if (series.length < 2) return null
+  const [a, b] = series.slice(-2)
+  const spanDays = (b[0] - a[0]) / DAY
+  return spanDays > 0 ? (b[1] - a[1]) / spanDays : null
+}
+
 export function mean(values: number[]): number | null {
   if (!values.length) return null
   return values.reduce((a, b) => a + b, 0) / values.length
@@ -120,6 +128,8 @@ export interface Rates {
   cycleImpliedIcpPerSec: number
   /** ICP actually burned on the ledger (7-day trailing average) */
   ledgerBurnIcpPerSec: number | null
+  /** ICP burned on the ledger during the last complete UTC day (what the ICP dashboard shows) */
+  ledgerBurnIcpPerSecLastDay: number | null
   ledgerBurnIcpPerSec30d: number | null
   /** ICP actually minted on the ledger, 30-day trailing average */
   mintIcpPerSec: number | null
@@ -169,6 +179,7 @@ export function derive(raw: RawData): Derived {
 
   const ledgerBurnIcpPerSec = perSec(trailingRatePerDay(raw.burnedSeries, 7))
   const ledgerBurnIcpPerSec30d = perSec(trailingRatePerDay(raw.burnedSeries, 30))
+  const ledgerBurnIcpPerSecLastDay = perSec(lastDayRate(raw.burnedSeries))
 
   const mintOver = (days: number) => {
     const s = trailingRatePerDay(raw.supplySeries, days)
@@ -219,6 +230,7 @@ export function derive(raw: RawData): Derived {
       cyclesPerSec7dAvg,
       cycleImpliedIcpPerSec: tcPerSec * icpPerTc,
       ledgerBurnIcpPerSec,
+      ledgerBurnIcpPerSecLastDay,
       ledgerBurnIcpPerSec30d,
       mintIcpPerSec,
       mintIcpPerSec90d,
@@ -253,3 +265,18 @@ export function derive(raw: RawData): Derived {
 
 /** Simple (non-compounded) inflation for a timeframe from an annual rate. */
 export const rateForTimeframe = (annual: number, seconds: number) => (annual * seconds) / (DAY * DAYS_PER_YEAR)
+
+/** Where the headline ICP burn figure comes from. */
+export type BurnSource = 'cycles' | 'ledger1d' | 'ledger'
+
+export const BURN_SOURCES: [BurnSource, string][] = [
+  ['cycles', 'Live · from cycles'],
+  ['ledger1d', 'Ledger · last day'],
+  ['ledger', 'Ledger · 7d avg'],
+]
+
+/** ICP burned per second for the chosen source; falls back to the cycle-implied rate. */
+export function icpBurnPerSecFor(r: Rates, source: BurnSource): number {
+  const ledger = source === 'ledger' ? r.ledgerBurnIcpPerSec : source === 'ledger1d' ? r.ledgerBurnIcpPerSecLastDay : null
+  return ledger ?? r.cycleImpliedIcpPerSec
+}

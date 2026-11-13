@@ -18,11 +18,17 @@ const ITEMS: { q: string; a: React.ReactNode }[] = [
     q: 'ICP burn rate',
     a: (
       <>
-        <b>Ledger · 7d</b> (default): actual ICP destroyed on the ledger (ICP→cycles conversions and fees), the 7-day trailing
-        average of <code>ledger-api /icp-burned/series</code>.
+        <b>Live · from cycles</b> (default): current cycle burn × ICP-per-TC at today’s ICP/XDR rate, i.e. what the network’s
+        compute costs in ICP right now.
         <br />
-        <b>From cycles · live</b>: current cycle burn × ICP-per-TC at today’s ICP/XDR rate. It shows what the burn is worth now,
-        while ICP is only burned when cycles are bought.
+        <b>Ledger · last day</b>: ICP actually destroyed on the ledger during the last complete UTC day (
+        <code>ledger-api /icp-burned/series</code>). This is the figure the ICP dashboard shows.
+        <br />
+        <b>Ledger · 7d avg</b>: the same ledger burn averaged over 7 days.
+        <br />
+        Ledger burn is lumpy: ICP is burned when someone converts it to cycles (top-ups, canister creation, cycles-ledger
+        deposits), not when those cycles are spent, so a single day can be several times the live figure and the next day far
+        below it. Over weeks the two track each other.
       </>
     ),
   },
@@ -55,8 +61,9 @@ const ITEMS: { q: string; a: React.ReactNode }[] = [
     q: 'Simulation',
     a: (
       <>
-        Every ember and spark stands for a fixed amount (shown under each panel), so the on-screen spawn rate matches the real
-        rate. Counters extrapolate from the last data point. Animations pause off-screen and respect “reduce motion”.
+        Every ember, flare and spark stands for a fixed amount (0.1 TC or 0.1 ICP by default, adjustable with the gear button and
+        shown under each panel), so the particles on screen match what is really burned and minted. Counters extrapolate from
+        the last data point. Animations pause off-screen and respect “reduce motion”.
       </>
     ),
   },

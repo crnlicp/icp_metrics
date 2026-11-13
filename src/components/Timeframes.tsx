@@ -1,7 +1,7 @@
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { fmtNumber, fmtPct, fmtUsd } from '../lib/format'
-import { TIMEFRAMES, type Derived, type TimeframeKey } from '../lib/metrics'
+import { TIMEFRAMES, type BurnSource, type Derived, type TimeframeKey } from '../lib/metrics'
 import { AnimatedNumber } from './Numbers'
 import { reveal } from '../lib/motion'
 import { Section } from './Section'
@@ -10,7 +10,7 @@ const fmtAmt = (n: number | null) => fmtNumber(n, 4)
 const fmtSigned = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${fmtNumber(n, 4)}`)
 const fmtP = (n: number | null) => fmtPct(n, 3, true)
 
-export function Timeframes({ d, icpBurnPerSec }: { d: Derived; icpBurnPerSec: number }) {
+export function Timeframes({ d, icpBurnPerSec, source }: { d: Derived; icpBurnPerSec: number; source: BurnSource }) {
   const [tf, setTf] = useState<TimeframeKey>('day')
   const frame = TIMEFRAMES.find((t) => t.key === tf)!
   const k = frame.seconds
@@ -53,14 +53,25 @@ export function Timeframes({ d, icpBurnPerSec }: { d: Derived; icpBurnPerSec: nu
       fmt: fmtP,
       foot: `of ${fmtNumber(d.supplyIcp, 3)} ICP supply`,
     },
-    {
-      label: 'Cycle burn in ICP',
-      value: r.cycleImpliedIcpPerSec * k,
-      unit: 'ICP',
-      tone: 'burn',
-      fmt: fmtAmt,
-      foot: 'cycles priced at today’s XDR rate',
-    },
+    // the counterpart to the headline burn: actual ledger burn when the live
+    // cycle figure is selected, the cycle-implied figure otherwise
+    source === 'cycles'
+      ? {
+          label: 'Ledger ICP burned',
+          value: r.ledgerBurnIcpPerSec == null ? null : r.ledgerBurnIcpPerSec * k,
+          unit: 'ICP',
+          tone: 'burn',
+          fmt: fmtAmt,
+          foot: 'actually destroyed on the ledger · 7-day avg',
+        }
+      : {
+          label: 'Cycle burn in ICP',
+          value: r.cycleImpliedIcpPerSec * k,
+          unit: 'ICP',
+          tone: 'burn',
+          fmt: fmtAmt,
+          foot: 'live cycle burn priced at today’s XDR rate',
+        },
   ]
 
   return (

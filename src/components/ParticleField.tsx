@@ -1,19 +1,17 @@
 import { useReducedMotion } from 'motion/react'
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { MAX_EMBERS_PER_SEC, MAX_FLARES_PER_SEC } from '../lib/ticker'
 
 /**
  * Canvas 2D particle simulation.
  *  - burn: embers rise from the bottom, cooling yellow → orange → red.
- *  - mint: sparks materialise across the field and float upward.
+ *  - mint: sparks materialise near the top and drift down.
  * Each particle represents a fixed amount (chosen by the parent), so the
- * spawn rate *is* the real on-chain rate. Pauses when offscreen / tab hidden.
+ * spawn rate *is* the real on-chain rate: there are no decorative extras, and
+ * every particle fades out at the end of its life. Pauses when offscreen.
  */
 
 export type Variant = 'burn' | 'mint'
-export interface ParticleFieldHandle {
-  burst: (count?: number) => void
-}
 
 /** An ICP-burn flare: ignites mid-card, swells, then explodes into shards. */
 interface Flare {
@@ -77,21 +75,26 @@ function makeSprites(ramp: string[]): HTMLCanvasElement[] {
   })
 }
 
-export const ParticleField = forwardRef<
-  ParticleFieldHandle,
-  { variant: Variant; particlesPerSec: number; flaresPerSec?: number; className?: string }
->(function ParticleField({ variant, particlesPerSec, flaresPerSec = 0, className }, ref) {
+export function ParticleField({
+  variant,
+  particlesPerSec,
+  flaresPerSec = 0,
+  className,
+}: {
+  variant: Variant
+  particlesPerSec: number
+  flaresPerSec?: number
+  className?: string
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rateRef = useRef(particlesPerSec)
   const flareRateRef = useRef(flaresPerSec)
-  const burstRef = useRef(0)
   const reduce = useReducedMotion()
 
   useEffect(() => {
     rateRef.current = particlesPerSec
     flareRateRef.current = flaresPerSec
   }, [particlesPerSec, flaresPerSec])
-  useImperativeHandle(ref, () => ({ burst: (n = 40) => void (burstRef.current += n) }), [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -105,7 +108,8 @@ export const ParticleField = forwardRef<
     const rings: Ring[] = []
     let flareAcc = 0
     const mobile = window.matchMedia('(max-width: 640px)').matches
-    const MAX = mobile ? 220 : 480
+    // room for the capped spawn rate × the longest life, so no particle is ever dropped
+    const MAX = 1100
     let w = 0
     let h = 0
     let dpr = 1
@@ -124,16 +128,16 @@ export const ParticleField = forwardRef<
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
-    const spawn = (burst = false) => {
+    const spawn = () => {
       if (particles.length >= MAX) return
       if (variant === 'burn') {
         // bias spawn toward the centre for a natural flame column
         const u = (Math.random() + Math.random() + Math.random()) / 3
         particles.push({
-          x: burst ? w / 2 + (Math.random() - 0.5) * w * 0.3 : u * w,
+          x: u * w,
           y: h + 6,
-          vx: (Math.random() - 0.5) * (burst ? 90 : 18),
-          vy: -(35 + Math.random() * 95) * (burst ? 1.8 : 1),
+          vx: (Math.random() - 0.5) * 18,
+          vy: -(35 + Math.random() * 95),
           age: 0,
           life: 2.2 + Math.random() * 2.8,
           size: Math.random() < 0.08 ? 10 + Math.random() * 14 : 2 + Math.random() * 4.5,
@@ -142,11 +146,12 @@ export const ParticleField = forwardRef<
           spark: Math.random() < 0.12,
         })
       } else {
+        // new ICP materialises near the top and drifts down into the card
         particles.push({
-          x: burst ? w / 2 + (Math.random() - 0.5) * 60 : Math.random() * w,
-          y: burst ? h / 2 + (Math.random() - 0.5) * 60 : h * (0.25 + Math.random() * 0.75),
-          vx: burst ? (Math.random() - 0.5) * 160 : (Math.random() - 0.5) * 8,
-          vy: burst ? (Math.random() - 0.5) * 160 : -(12 + Math.random() * 26),
+          x: Math.random() * w,
+          y: h * Math.random() * 0.35 - 6,
+          vx: (Math.random() - 0.5) * 8,
+          vy: 12 + Math.random() * 26,
           age: 0,
           life: 2.2 + Math.random() * 2.6,
           size: Math.random() < 0.1 ? 9 + Math.random() * 8 : 2.5 + Math.random() * 4,
@@ -158,7 +163,7 @@ export const ParticleField = forwardRef<
     }
 
     const spawnFlare = () => {
-      if (flares.length > 12) return
+      if (flares.length > 24) return
       // middle band of the card, away from the ember column at the bottom
       flares.push({
         x: w * (0.15 + Math.random() * 0.7),
@@ -249,7 +254,7 @@ export const ParticleField = forwardRef<
         const p = particles[i]
         p.age += dt
         const k = p.age / p.life
-        if (k >= 1 || p.y < -30) {
+        if (k >= 1 || p.y < -30 || p.y > h + 30) {
           particles.splice(i, 1)
           continue
         }
@@ -266,7 +271,7 @@ export const ParticleField = forwardRef<
           ctx.drawImage(sprite, p.x - s / 2, p.y - s / 2, s, s)
         } else {
           p.vx *= 1 - 1.2 * dt
-          p.vy = p.vy * (1 - 1.2 * dt) - 18 * dt
+          p.vy = p.vy * (1 - 1.2 * dt) + 18 * dt
           p.x += p.vx * dt + Math.sin(t * 0.001 + p.phase) * 0.15
           p.y += p.vy * dt
           const pop = k < 0.12 ? easeOutBack(k / 0.12) : 1
@@ -300,7 +305,8 @@ export const ParticleField = forwardRef<
 
     const frame = (t: number) => {
       raf = requestAnimationFrame(frame)
-      const dt = Math.min(0.05, (t - last) / 1000)
+      // rAF timestamps can precede performance.now() taken at setup: never let dt go negative
+      const dt = Math.max(0, Math.min(0.05, (t - last) / 1000))
       last = t
       if (!visible) return
       acc += Math.min(rateRef.current, MAX_EMBERS_PER_SEC) * dt
@@ -314,10 +320,6 @@ export const ParticleField = forwardRef<
           spawnFlare()
           flareAcc -= 1
         }
-      }
-      while (burstRef.current > 0) {
-        spawn(true)
-        burstRef.current--
       }
       draw(dt, t)
     }
@@ -347,7 +349,7 @@ export const ParticleField = forwardRef<
   }, [variant, reduce])
 
   return <canvas ref={canvasRef} className={className} aria-hidden="true" />
-})
+}
 
 function easeOutBack(x: number) {
   const c1 = 1.70158

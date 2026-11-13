@@ -40,12 +40,23 @@ export function niceUnit(ratePerSec: number, target = 40): number {
 /** Hard caps on particle spawn rates (per second) to keep the canvas smooth. */
 export const MAX_EMBERS_PER_SEC = 200
 export const MAX_FLARES_PER_SEC = 8
+export const MAX_SPARKS_PER_SEC = 200
+
+/** Default amount per ember (TC), flare (ICP) and spark (ICP) until the user changes it. */
+export const DEFAULT_PARTICLE_UNIT = 0.1
+
+/** Preset particle sizes offered in the settings modals. */
+export const EMBER_PRESETS = [0.001, 0.01, 0.05, 0.1, 0.5, 1]
+export const FLARE_PRESETS = [0.01, 0.05, 0.1, 0.25, 0.5, 1]
+export const SPARK_PRESETS = [0.01, 0.05, 0.1, 0.5, 1, 5]
 
 export interface SimUnits {
   /** TC represented by one ember; null = automatic */
   emberTc: number | null
   /** ICP represented by one flare; null = automatic */
   flareIcp: number | null
+  /** ICP represented by one mint spark; null = automatic */
+  sparkIcp: number | null
 }
 
 const KEY = 'icp-pulse:sim-units'
@@ -54,11 +65,11 @@ export function loadSimUnits(): SimUnits {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? 'null')
     const ok = (n: unknown) => (typeof n === 'number' && n > 0 && Number.isFinite(n) ? n : null)
-    if (v && typeof v === 'object') return { emberTc: ok(v.emberTc), flareIcp: ok(v.flareIcp) }
+    if (v && typeof v === 'object') return { emberTc: ok(v.emberTc), flareIcp: ok(v.flareIcp), sparkIcp: ok(v.sparkIcp) }
   } catch {
     /* storage unavailable: fall back to automatic */
   }
-  return { emberTc: null, flareIcp: null }
+  return { emberTc: null, flareIcp: null, sparkIcp: null }
 }
 
 export function saveSimUnits(u: SimUnits) {

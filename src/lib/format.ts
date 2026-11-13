@@ -69,3 +69,13 @@ export function fmtPlain(n: number | null | undefined, sig = 6): string {
   if (n == null || !Number.isFinite(n)) return '—'
   return Number(n.toPrecision(sig)).toLocaleString('en-US', { maximumFractionDigits: 12 })
 }
+
+/** Short human duration: 420 ms, 3.2 s, 4m 05s, 2h 10m, 3.4 d. */
+export function fmtDuration(sec: number | null | undefined): string {
+  if (sec == null || !Number.isFinite(sec) || sec <= 0) return '—'
+  if (sec < 1) return `${Math.round(sec * 1000)} ms`
+  if (sec < 60) return `${fmtNumber(sec, sec < 10 ? 2 : 3)} s`
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${String(Math.round(sec % 60)).padStart(2, '0')}s`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ${String(Math.round((sec % 3600) / 60)).padStart(2, '0')}m`
+  return `${fmtNumber(sec / 86400, 2)} d`
+}

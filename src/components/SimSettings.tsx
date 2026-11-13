@@ -1,12 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { fmtCompact, fmtNumber } from '../lib/format'
-import { MAX_EMBERS_PER_SEC, MAX_FLARES_PER_SEC, type SimUnits } from '../lib/ticker'
+import { fmtNumber } from '../lib/format'
 import { Close } from './Icons'
 
-const EMBER_PRESETS = [0.0001, 0.0005, 0.001, 0.005, 0.01]
-const FLARE_PRESETS = [0.001, 0.005, 0.01, 0.05, 0.1]
 
 /** Plain decimal string (no exponent) for a positive number. */
 const plain = (n: number) => Number(n.toPrecision(6)).toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 12 })
@@ -23,27 +20,25 @@ function rateText(perSec: number, noun: string) {
 }
 
 function Field({
+  tone,
   label,
   unit,
   value,
   onChange,
   presets,
-  autoValue,
   isAuto,
-  onAuto,
   rateOf,
   cap,
   noun,
   detail,
 }: {
+  tone: 'burn' | 'mint'
   label: string
   unit: string
   value: string
   onChange: (s: string) => void
   presets: number[]
-  autoValue: number
   isAuto: boolean
-  onAuto: () => void
   rateOf: (unit: number) => number
   cap: number
   noun: string
@@ -57,7 +52,7 @@ function Field({
       <label htmlFor={id} className="sim-field-label">
         {label}
       </label>
-      <div className={`sim-field-input ${n ? '' : 'invalid'}`}>
+      <div className={`sim-field-input ${n ? '' : 'invalid'} ${tone}`}>
         <span className="sim-field-prefix">1 {noun.replace(/s$/, '')} =</span>
         <input
           id={id}
@@ -70,11 +65,8 @@ function Field({
         <span className="sim-field-unit">{unit}</span>
       </div>
       <div className="chips">
-        <button type="button" className={`chip ${isAuto ? 'on' : ''}`} onClick={onAuto}>
-          Auto
-        </button>
         {presets.map((p) => (
-          <button type="button" key={p} className={`chip ${!isAuto && n === p ? 'on' : ''}`} onClick={() => onChange(plain(p))}>
+          <button type="button" key={p} className={`chip ${tone} ${n === p ? 'on' : ''}`} onClick={() => onChange(plain(p))}>
             {plain(p)}
           </button>
         ))}
@@ -84,7 +76,7 @@ function Field({
           <>
             {detail && <span>{detail(n)} · </span>}
             <span>{rateText(perSec, noun)}</span>
-            {isAuto && <span className="muted"> · auto picks {plain(autoValue)} {unit}</span>}
+            {isAuto && <span className="muted"> · default</span>}
           </>
         ) : (
           <span className="sim-field-error">Enter a number greater than 0</span>
@@ -100,56 +92,79 @@ function Field({
   )
 }
 
+/** One particle kind the user can rescale. `current` null = automatic. */
+export interface SimFieldSpec {
+  key: string
+  label: string
+  unit: string
+  noun: string
+  presets: number[]
+  current: number | null
+  auto: number
+  /** real amount per second, so the preview shows particles per second */
+  ratePerSec: number
+  cap: number
+  detail?: (n: number) => string
+}
+
 export function SimSettings({
   open,
   onClose,
-  units,
+  tone,
+  eyebrow,
+  intro,
+  fields,
   onApply,
-  auto,
-  tcPerSec,
-  icpBurnPerSec,
 }: {
   open: boolean
   onClose: () => void
-  units: SimUnits
-  onApply: (u: SimUnits) => void
-  auto: { emberTc: number; flareIcp: number }
-  tcPerSec: number
-  icpBurnPerSec: number
+  tone: 'burn' | 'mint'
+  eyebrow: string
+  intro: string
+  fields: SimFieldSpec[]
+  /** values in the same order as `fields`; null = automatic */
+  onApply: (values: (number | null)[]) => void
 }) {
-  const [ember, setEmber] = useState('')
-  const [flare, setFlare] = useState('')
-  const [emberAuto, setEmberAuto] = useState(true)
-  const [flareAuto, setFlareAuto] = useState(true)
+  const [values, setValues] = useState<string[]>([])
+  const [autos, setAutos] = useState<boolean[]>([])
   const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
 
   // load current values each time the modal opens
   useEffect(() => {
     if (!open) return
-    setEmber(plain(units.emberTc ?? auto.emberTc))
-    setFlare(plain(units.flareIcp ?? auto.flareIcp))
-    setEmberAuto(units.emberTc == null)
-    setFlareAuto(units.flareIcp == null)
+    setValues(fields.map((f) => plain(f.current ?? f.auto)))
+    setAutos(fields.map((f) => f.current == null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // Keep the latest onClose in a ref: the parent passes a new function on every
+  // render (live data refreshes every few seconds), and depending on it here
+  // re-ran this effect and stole focus back to the first input mid-typing.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCloseRef.current()
     window.addEventListener('keydown', onKey)
+    // focus the first field once, when the modal opens
     const t = setTimeout(() => dialogRef.current?.querySelector('input')?.focus(), 50)
     return () => {
       window.removeEventListener('keydown', onKey)
       clearTimeout(t)
     }
-  }, [open, onClose])
+  }, [open])
 
-  const e = parse(ember)
-  const f = parse(flare)
+  const parsed = fields.map((_, i) => parse(values[i] ?? ''))
+  const valid = values.length === fields.length && parsed.every((n) => n != null)
+  const setAt = <T,>(arr: T[], i: number, v: T) => arr.map((x, j) => (j === i ? v : x))
 
   const apply = () => {
-    if (!e || !f) return
-    onApply({ emberTc: emberAuto ? null : e, flareIcp: flareAuto ? null : f })
+    if (!valid) return
+    onApply(parsed.map((n, i) => (autos[i] ? null : n)))
     onClose()
   }
 
@@ -165,10 +180,10 @@ export function SimSettings({
         >
           <motion.div
             ref={dialogRef}
-            className="modal"
+            className={`modal modal-${tone}`}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="sim-title"
+            aria-labelledby={titleId}
             initial={{ opacity: 0, y: 40, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 30, scale: 0.97 }}
@@ -177,17 +192,14 @@ export function SimSettings({
           >
             <div className="modal-head">
               <div>
-                <p className="eyebrow">Burn simulation</p>
-                <h3 id="sim-title">Particle scale</h3>
+                <p className="eyebrow">{eyebrow}</p>
+                <h3 id={titleId}>Particle scale</h3>
               </div>
               <button className="icon-btn" onClick={onClose} aria-label="Close settings">
                 <Close width={18} height={18} />
               </button>
             </div>
-            <p className="modal-intro">
-              Choose how much each particle represents. Particles spawn at the real burn rate, so a smaller amount means more
-              particles.
-            </p>
+            <p className="modal-intro">{intro}</p>
 
             <form
               onSubmit={(ev) => {
@@ -195,64 +207,42 @@ export function SimSettings({
                 apply()
               }}
             >
-              <Field
-                label="Cycle embers"
-                unit="TC"
-                noun="embers"
-                value={ember}
-                onChange={(s) => {
-                  setEmber(s)
-                  setEmberAuto(false)
-                }}
-                presets={EMBER_PRESETS}
-                autoValue={auto.emberTc}
-                isAuto={emberAuto}
-                onAuto={() => {
-                  setEmber(plain(auto.emberTc))
-                  setEmberAuto(true)
-                }}
-                rateOf={(u) => tcPerSec / u}
-                cap={MAX_EMBERS_PER_SEC}
-                detail={(n) => `${fmtCompact(n * 1e12, 2)} cycles`}
-              />
-              <Field
-                label="ICP flares"
-                unit="ICP"
-                noun="flares"
-                value={flare}
-                onChange={(s) => {
-                  setFlare(s)
-                  setFlareAuto(false)
-                }}
-                presets={FLARE_PRESETS}
-                autoValue={auto.flareIcp}
-                isAuto={flareAuto}
-                onAuto={() => {
-                  setFlare(plain(auto.flareIcp))
-                  setFlareAuto(true)
-                }}
-                rateOf={(u) => icpBurnPerSec / u}
-                cap={MAX_FLARES_PER_SEC}
-              />
+              {fields.map((f, i) => (
+                <Field
+                  key={f.key}
+                  tone={tone}
+                  label={f.label}
+                  unit={f.unit}
+                  noun={f.noun}
+                  value={values[i] ?? ''}
+                  onChange={(v) => {
+                    setValues((a) => setAt(a, i, v))
+                    setAutos((a) => setAt(a, i, false))
+                  }}
+                  presets={f.presets}
+                  isAuto={autos[i] ?? true}
+                  rateOf={(u) => f.ratePerSec / u}
+                  cap={f.cap}
+                  detail={f.detail}
+                />
+              ))}
 
               <div className="modal-actions">
                 <button
                   type="button"
                   className="btn btn-ghost"
                   onClick={() => {
-                    setEmber(plain(auto.emberTc))
-                    setFlare(plain(auto.flareIcp))
-                    setEmberAuto(true)
-                    setFlareAuto(true)
+                    setValues(fields.map((f) => plain(f.auto)))
+                    setAutos(fields.map(() => true))
                   }}
                 >
-                  Reset to auto
+                  Reset to default
                 </button>
                 <span className="spacer" />
                 <button type="button" className="btn btn-ghost" onClick={onClose}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={!e || !f}>
+                <button type="submit" className={`btn btn-primary btn-${tone}`} disabled={!valid}>
                   Apply
                 </button>
               </div>

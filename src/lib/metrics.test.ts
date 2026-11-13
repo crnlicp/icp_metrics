@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Point } from './api'
-import { DAY, E8S, dailyFlows, derive, rateForTimeframe, trailingRatePerDay, valueAt, type RawData } from './metrics'
+import { DAY, E8S, dailyFlows, derive, icpBurnPerSecFor, lastDayRate, rateForTimeframe, trailingRatePerDay, valueAt, type RawData, type Rates } from './metrics'
 import { fmtCompact, fmtNumber, fmtPct, tickerDecimals } from './format'
 
 const T0 = 1_700_006_400 // a UTC midnight
@@ -135,5 +135,23 @@ describe('format', () => {
   it('picks ticker decimals so digits move', () => {
     expect(tickerDecimals(0.025)).toBe(3)
     expect(tickerDecimals(2000)).toBe(0)
+  })
+})
+
+describe('ledger burn sources', () => {
+  it('lastDayRate uses only the last two points', () => {
+    const s: [number, number][] = [
+      [0, 0],
+      [DAY, 100],
+      [2 * DAY, 500],
+    ]
+    expect(lastDayRate(s)).toBe(400)
+    expect(lastDayRate([[0, 1]])).toBeNull()
+  })
+  it('icpBurnPerSecFor falls back to the cycle-implied rate', () => {
+    const r = { cycleImpliedIcpPerSec: 1, ledgerBurnIcpPerSec: 2, ledgerBurnIcpPerSecLastDay: null } as unknown as Rates
+    expect(icpBurnPerSecFor(r, 'cycles')).toBe(1)
+    expect(icpBurnPerSecFor(r, 'ledger')).toBe(2)
+    expect(icpBurnPerSecFor(r, 'ledger1d')).toBe(1)
   })
 })
