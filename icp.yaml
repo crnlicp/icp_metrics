@@ -1,0 +1,16 @@
+canisters:
+  - name: frontend
+    recipe:
+      type: "@dfinity/static-site@v0.4.3"
+      configuration:
+        build:
+          - npm ci
+          - npm run build
+        dir: dist
+
+# Port 8000 is used by another local project; give this one its own gateway port.
+networks:
+  - name: local
+    mode: managed
+    gateway:
+      port: 8010

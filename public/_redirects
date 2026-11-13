@@ -1,0 +1,3 @@
+# Assets that don't exist should 404, not return the HTML shell
+/assets/*  /404.html    404
+/*         /index.html  200
